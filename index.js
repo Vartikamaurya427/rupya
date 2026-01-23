@@ -18,16 +18,11 @@ const app = express();
 
         // app.use(cors());
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'https://YOUR-FRONTEND-DOMAIN.com'
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-app.options('*', cors());
-
+// app.options('*', cors());
 
 
 app.use(express.json({ limit: '10mb' }));
