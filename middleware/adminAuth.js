@@ -18,24 +18,23 @@
 const jwt = require("jsonwebtoken");
 
 module.exports = (req, res, next) => {
-  
-  const authHeader = req.headers.authorization; // Get Authorization header
+  const authHeader = req.headers.authorization;
 
   if (!authHeader) {
     return res.status(403).json({ message: "Token required" });
   }
 
-  // Token format: "Bearer token"
-  const token = authHeader.split(" ")[1];
-  if (!token) {
-    return res.status(401).json({ message: "Invalid token" });
-  }
+  // Allow both: "Bearer token" and "token"
+  const token = authHeader.startsWith("Bearer ")
+    ? authHeader.split(" ")[1]
+    : authHeader;
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.admin = decoded; // decoded contains adminId
+    req.admin = decoded;
     next();
   } catch (err) {
-    res.status(401).json({ message: "Invalid token" });
+    console.log("JWT ERROR 👉", err.message);
+    return res.status(401).json({ message: "Invalid token" });
   }
 };

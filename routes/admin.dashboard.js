@@ -134,4 +134,121 @@ router.get("/dashboard-master", adminAuth, async (req, res) => {
     });
   }
 });
+
+router.get("/users", adminAuth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const query = {
+      $or: [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } }
+      ]
+    };
+
+    const users = await User.find(query)
+      .select(`
+        name
+        email
+        phone
+        address.country
+        wallet.balance
+        createdAt
+      `)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const total = await User.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: users,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error("Admin Users Error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+router.get("/users/active", adminAuth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+
+    const query = {
+      deviceInfo: { $ne: null },
+      $or: [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } }
+      ]
+    };
+
+    const users = await User.find(query)
+      .select(`
+        name
+        email
+        phone
+        address.country
+        wallet.balance
+        createdAt
+      `)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const total = await User.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: users,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Active Users Error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+router.get("/users/:id", adminAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+      .populate("wallet.transactions");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      data: user
+    });
+
+  } catch (error) {
+    console.error("❌ User Details Error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
 module.exports = router;
