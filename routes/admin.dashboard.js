@@ -276,7 +276,68 @@ router.get("/users/email-unverified", adminAuth, async (req, res) => {
     });
   }
 });
+router.get("/mobile-unverified-users", adminAuth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
 
+    const query = {
+      $and: [
+        {
+          $or: [
+            { mobileVerified: false },
+            { mobileVerified: { $exists: false } }
+          ]
+        },
+        {
+          $or: [
+            { name: { $regex: search, $options: "i" } },
+            { email: { $regex: search, $options: "i" } },
+            { phone: { $regex: search, $options: "i" } }
+          ]
+        }
+      ]
+    };
+
+    const users = await User.find(query)
+      .select("name email phone address.country wallet.balance createdAt")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    const total = await User.countDocuments(query);
+
+    // 🔥 UI-friendly format
+    const formattedUsers = users.map(user => ({
+      id: user._id,
+      user: user.name || "-",
+      emailMobile: `${user.email || "-"} / ${user.phone || "-"}`,
+      country: user.address?.country || "-",
+      joinedAt: user.createdAt,
+      balance: user.wallet?.balance || 0
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: formattedUsers,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Mobile Unverified Users Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
 router.get("/users/:id", adminAuth, async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
