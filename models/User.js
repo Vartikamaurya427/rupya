@@ -36,7 +36,12 @@ const userSchema = new mongoose.Schema({
   otpExpiresAt: Date,
 
   isVerified: { type: Boolean, default: false },
+//add new line 
 
+// ← Add these verification flags here
+  emailVerified: { type: Boolean, default: false },
+  mobileVerified: { type: Boolean, default: false },
+  twoFAVerified: { type: Boolean, default: false },
   pin: String,
   password: String,
 
@@ -52,6 +57,11 @@ const userSchema = new mongoose.Schema({
     balance: { type: Number, default: 0 },
     transactions: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Transaction' }]
   },
+deposits: { type: Number, default: 0 },
+  servicePurchase: { type: Number, default: 0 },
+
+  upline: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  downlineCount: { type: Number, default: 0 },
 
   savedPaymentMethods: [
     {

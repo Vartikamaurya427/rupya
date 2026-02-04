@@ -231,7 +231,8 @@ router.get("/users/active", adminAuth, async (req, res) => {
 router.get("/users/:id", adminAuth, async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
-      .populate("wallet.transactions");
+      .populate("wallet.transactions")
+      .lean();
 
     if (!user) {
       return res.status(404).json({
@@ -240,14 +241,41 @@ router.get("/users/:id", adminAuth, async (req, res) => {
       });
     }
 
-    res.json({
+    // Split name into firstName and lastName
+    const nameParts = user.name ? user.name.split(" ") : ["", ""];
+
+    const userDetails = {
+      firstName: nameParts[0] || "",
+      lastName: nameParts.slice(1).join(" ") || "",
+      email: user.email || "",
+      mobileNumber: user.phone || "",
+      address: user.address?.street || "",
+      city: user.address?.city || "",
+      state: user.address?.state || "",
+      zipPostal: user.address?.zipCode || "",
+      country: user.address?.country || "",
+      emailVerified: user.emailVerified || false,
+      mobileVerified: user.mobileVerified || false,
+      twoFAVerified: user.twoFAVerified || false,
+      balance: user.wallet?.balance || 0,
+      deposits: user.deposits || 0,
+      transactions: user.wallet?.transactions?.length || 0,
+      servicePurchase: user.servicePurchase || 0,
+      upline: user.upline || "N/A",
+      downline: user.downlineCount || 0
+    };
+
+    return res.status(200).json({
       success: true,
-      data: user
+      data: userDetails
     });
 
   } catch (error) {
     console.error("❌ User Details Error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 });
 
