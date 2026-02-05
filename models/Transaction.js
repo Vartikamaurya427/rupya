@@ -26,7 +26,7 @@ const transactionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ["deposit", "withdraw", "service_purchase", "refund", "bonus"],
+    enum: ["CREDIT", "DEBIT", "deposit", "withdraw", "service_purchase", "refund", "bonus"],
     required: true
   },
   remark: {
