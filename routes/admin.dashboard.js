@@ -3,93 +3,8 @@ const router = express.Router();
 
 const adminAuth = require("../middleware/adminAuth");
 const User = require("../models/User");
+const Transaction = require("../models/Transaction");
 
-// /**
-//  * TOTAL USERS (ADMIN DASHBOARD)
-//  */
-// router.get("/total-users", adminAuth, async (req, res) => {
-//   try {
-//     const totalUsers = await User.countDocuments();
-
-//     return res.status(200).json({
-//       success: true,
-//       totalUsers
-//     });
-
-//   } catch (error) {
-//     console.error("Total Users Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server error"
-//     });
-//   }
-// });
-// router.get("/active-users", adminAuth, async (req, res) => {
-//   try {
-//     const activeUsers = await User.countDocuments({
-//       deviceInfo: { $ne: null }
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       activeUsers
-//     });
-
-//   } catch (error) {
-//     console.error("Active Users Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server error"
-//     });
-//   }
-// });
-
-// router.get("/email-unverified-users", adminAuth, async (req, res) => {
-//   try {
-//     const emailUnverifiedUsers = await User.countDocuments({
-//       $or: [
-//         { email: { $exists: false } },
-//         { email: "" }
-//       ]
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       emailUnverifiedUsers
-//     });
-
-//   } catch (error) {
-//     console.error("Email Unverified Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server error"
-//     });
-//   }
-// });
-// router.get("/mobile-unverified-users", adminAuth, async (req, res) => {
-//   try {
-//     const mobileUnverifiedUsers = await User.countDocuments({
-//       $or: [
-//         { phone: { $exists: false } },
-//         { phone: "" },
-//         { isVerified: false }
-//       ]
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       mobileUnverifiedUsers
-//     });
-
-//   } catch (error) {
-//     console.error("❌ Mobile Unverified Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server error"
-//     });
-//   }
-// });
-// module.exports = router;
 router.get("/dashboard-master", adminAuth, async (req, res) => {
   try {
     // Use Promise.all for parallel queries
@@ -382,6 +297,81 @@ router.get("/users/:id", adminAuth, async (req, res) => {
 
   } catch (error) {
     console.error("❌ User Details Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+
+router.get("/users/:id/transactions", adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const type = req.query.type;
+    const remark = req.query.remark;
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+
+    // 🔍 Filter build
+    const query = { userId };
+
+    if (type) query.type = type;
+    if (remark) query.remark = { $regex: remark, $options: "i" };
+
+    if (startDate && endDate) {
+      query.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+
+    const transactions = await Transaction.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    const total = await Transaction.countDocuments(query);
+
+    // 🧠 UI-friendly format
+    let formattedData = transactions.map(tx => ({
+      trx: tx.trx,
+      type: tx.type,
+      remark: tx.remark,
+      amount: tx.amount,
+      postBalance: tx.postBalance,
+      date: tx.createdAt
+    }));
+
+    // ✅ Agar koi transaction nahi hai, dummy object add karo keys ke liye
+    if (formattedData.length === 0) {
+      formattedData = [{
+        trx: "",
+        type: "",
+        remark: "",
+        amount: 0,
+        postBalance: 0,
+        date: ""
+      }];
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: formattedData,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error("Transaction History Error:", error);
     return res.status(500).json({
       success: false,
       message: "Server error"
