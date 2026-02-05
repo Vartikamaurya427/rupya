@@ -448,5 +448,68 @@ router.get("/users/:id/transactions", adminAuth, async (req, res) => {
     });
   }
 });
+router.get("/transactions", adminAuth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const type = req.query.type;
+    const remark = req.query.remark;
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
 
+    const query = {};
+
+    if (type) {
+      query.type = type;
+    }
+
+    if (remark) {
+      query.remark = { $regex: remark, $options: "i" };
+    }
+
+    if (startDate && endDate) {
+      query.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    // Pagination using skip - or you can use range-based (_id) pagination if needed
+    const transactions = await Transaction.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    const total = await Transaction.countDocuments(query);
+
+    // Format data as needed by frontend
+    const formattedData = transactions.map((tx) => ({
+      userId: tx.userId,
+      trx: tx.trx,
+      type: tx.type,
+      remark: tx.remark,
+      amount: tx.amount,
+      postBalance: tx.postBalance,
+      date: tx.createdAt,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: formattedData,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("All Transactions History Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+});
 module.exports = router;
