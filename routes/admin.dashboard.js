@@ -303,6 +303,76 @@ router.get("/users/:id", adminAuth, async (req, res) => {
     });
   }
 });
+router.put("/users/:id", adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    // Jo fields update karna chahte ho wo allowed fields me define karlo
+    const allowedUpdates = [
+      "name",
+      "email",
+      "phone",
+      "address.street",
+      "address.city",
+      "address.state",
+      "address.zipCode",
+      "address.country",
+      "emailVerified",
+      "mobileVerified",
+      "twoFAVerified"
+    ];
+
+    // Update object build karna req.body se (sirf allowed fields hi)
+    const updates = {};
+    allowedUpdates.forEach(field => {
+      // Nested fields handle karna - example: address.city
+      const keys = field.split(".");
+      let value = req.body;
+      for (const key of keys) {
+        if (value && key in value) {
+          value = value[key];
+        } else {
+          value = undefined;
+          break;
+        }
+      }
+      if (value !== undefined) {
+        // Ab updates me nested set karna
+        let current = updates;
+        keys.forEach((key, i) => {
+          if (i === keys.length - 1) {
+            current[key] = value;
+          } else {
+            current[key] = current[key] || {};
+            current = current[key];
+          }
+        });
+      }
+    });
+
+    // Update user in DB
+    const user = await User.findByIdAndUpdate(userId, updates, { new: true }).lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: user
+    });
+
+  } catch (error) {
+    console.error("❌ Update User Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
 
 
 router.get("/users/:id/transactions", adminAuth, async (req, res) => {
