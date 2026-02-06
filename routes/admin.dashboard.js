@@ -451,137 +451,7 @@ router.get("/users/:id/transactions", adminAuth, async (req, res) => {
     });
   }
 });
-// router.get("/transactions", adminAuth, async (req, res) => {
-//   try {
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-//     const type = req.query.type;
-//     const remark = req.query.remark;
-//     const startDate = req.query.startDate;
-//     const endDate = req.query.endDate;
 
-//     const query = {};
-
-//     if (type) {
-//       query.type = type;
-//     }
-
-//     if (remark) {
-//       query.remark = { $regex: remark, $options: "i" };
-//     }
-
-//     if (startDate && endDate) {
-//       query.createdAt = {
-//         $gte: new Date(startDate),
-//         $lte: new Date(endDate),
-//       };
-//     }
-
-//     // Pagination using skip - or you can use range-based (_id) pagination if needed
-//     const transactions = await Transaction.find(query)
-//       .sort({ createdAt: -1 })
-//       .skip((page - 1) * limit)
-//       .limit(limit)
-//       .lean();
-
-//     const total = await Transaction.countDocuments(query);
-
-//     // Format data as needed by frontend
-//     const formattedData = transactions.map((tx) => ({
-//       userId: tx.userId,
-//       trx: tx.trx,
-//       type: tx.type,
-//       remark: tx.remark,
-//       amount: tx.amount,
-//       postBalance: tx.postBalance,
-//       date: tx.createdAt,
-//     }));
-
-//     return res.status(200).json({
-//       success: true,
-//       data: formattedData,
-//       pagination: {
-//         total,
-//         page,
-//         limit,
-//         totalPages: Math.ceil(total / limit),
-//       },
-//     });
-//   } catch (error) {
-//     console.error("All Transactions History Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server error",
-//     });
-//   }
-// });
-// router.get("/transactions", adminAuth, async (req, res) => {
-//   try {
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-
-//     // Basic query - no filters
-//     const query = {};
-
-//     const transactions = await Transaction.find(query)
-//       .sort({ createdAt: -1 })
-//       .skip((page - 1) * limit)
-//       .limit(limit)
-//       .lean();
-
-//     // Get all involved userIds
-//     const userIds = [...new Set(transactions.map(tx => tx.userId.toString()))];
-
-//     const users = await User.find({ _id: { $in: userIds } })
-//       .select("name email phone")
-//       .lean();
-
-//     const userMap = {};
-//     users.forEach(user => {
-//       userMap[user._id.toString()] = user;
-//     });
-
-//     const formattedData = transactions.map(tx => {
-//       const user = userMap[tx.userId.toString()] || {};
-
-//       return {
-//         user: user.name || user.email || "@unknown",
-//         trx: tx._id.toString(),
-//         transacted: new Date(tx.createdAt).toLocaleString("en-US", {
-//           year: "numeric",
-//           month: "2-digit",
-//           day: "2-digit",
-//           hour: "2-digit",
-//           minute: "2-digit",
-//           hour12: true
-//         }),
-//         amount: `$${tx.amount.toFixed(2)} USD`,
-//         postBalance: tx.postBalance != null ? `$${tx.postBalance.toFixed(2)} USD` : "$0.00 USD",
-//         details: tx.description || tx.remark || ""
-//       };
-//     });
-
-//     const total = await Transaction.countDocuments(query);
-
-//     return res.status(200).json({
-//       success: true,
-//       data: formattedData,
-//       pagination: {
-//         total,
-//         page,
-//         limit,
-//         totalPages: Math.ceil(total / limit)
-//       }
-//     });
-
-//   } catch (error) {
-//     console.error("All Transactions History Error:", error);
-//     return res.status(500).json({
-//       success: false,
-//       message: "Server error"
-//     });
-//   }
-// });
 router.get("/transactions", adminAuth, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -677,6 +547,48 @@ router.get("/transactions", adminAuth, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Server error"
+    });
+  }
+});
+router.get('/users/:id/deposits', async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    // Sabhi deposits fetch karo
+    const deposits = await Transaction.find({
+      userId: userId,
+      type: 'deposit'
+    }).sort({ createdAt: -1 });
+
+    // Status wise grouping and summation
+    const statusSummary = {
+      successful: { count: 0, amount: 0 },
+      pending: { count: 0, amount: 0 },
+      rejected: { count: 0, amount: 0 },
+      initiated: { count: 0, amount: 0 }
+    };
+
+    deposits.forEach(deposit => {
+      const status = deposit.status?.toLowerCase() || 'initiated'; // fallback initiated
+      if (statusSummary[status]) {
+        statusSummary[status].count += 1;
+        statusSummary[status].amount += deposit.amount || 0;
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        statusSummary,
+        deposits
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Deposit History Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error'
     });
   }
 });
