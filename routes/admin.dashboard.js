@@ -351,8 +351,11 @@ router.put("/users/:id", adminAuth, async (req, res) => {
     });
 
     // Update user in DB
-    const user = await User.findByIdAndUpdate(userId, updates, { new: true }).lean();
-
+const user = await User.findByIdAndUpdate(
+  userId,
+  { $set: updates },
+  { new: true, runValidators: true }
+).lean();
     if (!user) {
       return res.status(404).json({
         success: false,
