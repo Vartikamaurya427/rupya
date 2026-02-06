@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const sendPushNotification = require('../utils/sendPushNotification');
-
+const { v4: uuidv4 } = require('uuid');
 
 exports.addMoney = async (req, res) => {
   try {
@@ -19,12 +19,14 @@ exports.addMoney = async (req, res) => {
     user.wallet.balance += amount;
 
     const transaction = await Transaction.create({
-      userId: user._id,
-      type: 'CREDIT',
-      amount,
-      method,
-      description,
-    });
+  userId: user._id,
+  type: 'CREDIT',
+    trx: uuidv4(),  // <-- unique trx id
+  amount,
+  method,
+  description,
+  postBalance: user.wallet.balance // current balance after update
+});
 
     user.wallet.transactions.push(transaction._id);
     await user.save();
@@ -69,13 +71,15 @@ exports.deductMoney = async (req, res) => {
 
     user.wallet.balance -= amount;
 
-    const transaction = await Transaction.create({
-      userId: user._id,
-      type: 'DEBIT',
-      amount,
-      method,
-      description,
-    });
+  const transaction = await Transaction.create({
+  userId: user._id,
+  trx: uuidv4(),  // <-- unique trx id
+  type: 'DEBIT',
+  amount,
+  method,
+  description,
+  postBalance: user.wallet.balance
+});
 
     user.wallet.transactions.push(transaction._id);
     await user.save();
