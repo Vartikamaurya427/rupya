@@ -592,4 +592,113 @@ router.get('/users/:id/deposits', async (req, res) => {
     });
   }
 });
+router.get("/deposits", adminAuth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    // Optional filters
+    const status = req.query.status;
+    const gateway = req.query.gateway;
+    const startDate = req.query.startDate;
+    const endDate = req.query.endDate;
+
+    const query = { type: "deposit" };
+
+    if (status) query.status = status;
+    if (gateway) query.gateway = gateway;
+
+    if (startDate && endDate) {
+      query.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+
+    const deposits = await Transaction.find(query)
+      .populate("userId", "name email phone")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    const total = await Transaction.countDocuments(query);
+
+    const formattedData = deposits.map(d => ({
+      gateway: d.gateway || "-",
+      transactionId: d.trx || d._id.toString(),
+      initiated: d.createdAt,
+      user: {
+        name: d.userId?.name || "-",
+        contact: d.userId?.phone || d.userId?.email || "-"
+      },
+      amount: {
+        base: d.amount || 0,
+        fee: d.charge || 0,
+        total: (d.amount || 0) + (d.charge || 0),
+        currency: "USD"
+      },
+      conversion: {
+        rate: d.conversionRate || 1,
+        convertedAmount: d.convertedAmount || d.amount || 0
+      },
+      status: d.status || "initiated"
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: formattedData,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Admin Deposit List Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+router.get("/deposits/summary", adminAuth, async (req, res) => {
+  try {
+    const summary = await Transaction.aggregate([
+      { $match: { type: "deposit" } },
+      {
+        $group: {
+          _id: "$status",
+          totalAmount: { $sum: "$amount" }
+        }
+      }
+    ]);
+
+    const result = {
+      successful: 0,
+      pending: 0,
+      rejected: 0,
+      initiated: 0
+    };
+
+    summary.forEach(item => {
+      const key = item._id?.toLowerCase();
+      if (result[key] !== undefined) {
+        result[key] = item.totalAmount;
+      }
+    });
+
+    return res.json({
+      success: true,
+      data: result
+    });
+
+  } catch (err) {
+    console.error("❌ Deposit Summary Error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
 module.exports = router;

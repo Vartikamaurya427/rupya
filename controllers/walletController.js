@@ -18,16 +18,25 @@ exports.addMoney = async (req, res) => {
 
     user.wallet.balance += amount;
 
-    const transaction = await Transaction.create({
+//     const transaction = await Transaction.create({
+//   userId: user._id,
+//   type: 'CREDIT',
+//     trx: uuidv4(),  // <-- unique trx id
+//   amount,
+//   method,
+//   description,
+//   postBalance: user.wallet.balance // current balance after update
+// });
+const transaction = await Transaction.create({
   userId: user._id,
-  type: 'CREDIT',
-    trx: uuidv4(),  // <-- unique trx id
+  trx: uuidv4(),
+  type: 'deposit',      // deposit type
+  status: 'successful', // ya pending/initiated
+  gateway: method,      // payment method
   amount,
-  method,
-  description,
-  postBalance: user.wallet.balance // current balance after update
+  postBalance: user.wallet.balance,
+  remark: description
 });
-
     user.wallet.transactions.push(transaction._id);
     await user.save();
 

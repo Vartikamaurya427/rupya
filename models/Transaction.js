@@ -40,7 +40,17 @@ const transactionSchema = new mongoose.Schema({
   postBalance: {
     type: Number,
     required: true
-  }
-}, { timestamps: true });
+  },
+    status: {
+    type: String,
+    enum: ["initiated", "pending", "successful", "rejected"],
+    default: "initiated"
+  },
+  gateway: { type: String, default: "-" },
+  charge: { type: Number, default: 0 },
+  convertedAmount: { type: Number, default: 0 },
+  conversionRate: { type: Number, default: 1 }
+}, 
+ { timestamps: true });
 
 module.exports = mongoose.model("Transaction", transactionSchema);
