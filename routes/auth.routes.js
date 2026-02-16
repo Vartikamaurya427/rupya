@@ -4,6 +4,7 @@ const router = express.Router();
 const User = require('../models/User');
 const JWT_SECRET = 'your_secret_key';
 const authMiddleware = require('../middleware/auth.middleware');
+const LoginHistory = require('../models/LoginHistory');
 
 
 const sendSMS = require('../helpers/smssend')
@@ -383,7 +384,7 @@ router.get('/get-pin-pass', async (req, res) => {
 
 
 router.post('/login', async (req, res) => {
-  const { userId, pin, password, fcmToken } = req.body;
+  const { userId, pin, password, fcmToken, location, os } = req.body;
   const { deviceid, model, manufacturer } = req.headers;
 
   if (!userId || (!pin && !password)) {
@@ -448,6 +449,19 @@ router.post('/login', async (req, res) => {
     };
 
     await user.save();
+      // 🔥 Save login history
+    await LoginHistory.create({
+      userId: user._id,
+      ip: req.ip,
+      location: location || '', // optional
+      browser: req.headers['user-agent'] || '',
+      os: os || '',
+      deviceInfo: {
+        deviceId: deviceid,
+        model,
+        manufacturer
+      }
+    });
 
     const token = jwt.sign(
       { userId: user._id },

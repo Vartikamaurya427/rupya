@@ -4,6 +4,7 @@ const router = express.Router();
 const adminAuth = require("../middleware/adminAuth");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
+const LoginHistory = require("../models/LoginHistory"); // <-- ye add karo
 
 router.get("/dashboard-master", adminAuth, async (req, res) => {
   try {
@@ -420,7 +421,7 @@ router.get("/users/:id/transactions", adminAuth, async (req, res) => {
       date: tx.createdAt
     }));
 
-    // ✅ Agar koi transaction nahi hai, dummy object add karo keys ke liye
+    // Agar koi transaction nahi hai, dummy object add karo keys ke liye
     if (formattedData.length === 0) {
       formattedData = [{
         trx: "",
@@ -585,7 +586,7 @@ router.get('/users/:id/deposits', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Deposit History Error:', error);
+    console.error(' Deposit History Error:', error);
     return res.status(500).json({
       success: false,
       message: 'Server error'
@@ -657,7 +658,7 @@ router.get("/deposits", adminAuth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Admin Deposit List Error:", error);
+    console.error(" Admin Deposit List Error:", error);
     return res.status(500).json({
       success: false,
       message: "Server error"
@@ -697,8 +698,42 @@ router.get("/deposits/summary", adminAuth, async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ Deposit Summary Error:", err);
+    console.error(" Deposit Summary Error:", err);
     res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+router.get('/login-history/:userId', adminAuth, async (req, res) => {
+  const { userId } = req.params;
+  const page = parseInt(req.query.page) || 1;    
+  const limit = parseInt(req.query.limit) || 20; 
+
+  try {
+    // ✅ Admin middleware se req.admin already set
+    if (!req.admin) {
+      return res.status(403).json({ message: 'Access denied: Admins only' });
+    }
+
+    const skip = (page - 1) * limit;
+
+    const history = await LoginHistory.find({ userId })
+      .sort({ loginAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const total = await LoginHistory.countDocuments({ userId });
+
+    res.status(200).json({
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      data: history,
+    });
+  } catch (err) {
+    console.error('❌ Admin fetch login history error:', err);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 module.exports = router;

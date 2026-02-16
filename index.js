@@ -13,7 +13,8 @@ const easebuzzRoutes = require('./routes/easebuzz.routes');
 const bbpsRoutes = require('./routes/bbps.routes');
 const adminRoutes = require("./routes/admin.routes");
 const adminDashboardRoutes = require("./routes/admin.dashboard");
-
+const userTicketRoutes = require('./routes/userTicket.routes');
+const adminTicketRoutes = require('./routes/adminTicket.routes');
 const app = express();
 
         // app.use(cors());
@@ -39,7 +40,8 @@ app.use('/api/easebuzz', easebuzzRoutes);
 app.use('/api/bbps', bbpsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin/dashboard', adminDashboardRoutes);
-
+app.use('/api/user/tickets', userTicketRoutes);
+app.use('/api/admin/tickets', adminTicketRoutes);
 
 const PORT = process.env.PORT || 3000;
 
