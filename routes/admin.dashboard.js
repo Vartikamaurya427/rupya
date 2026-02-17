@@ -702,38 +702,149 @@ router.get("/deposits/summary", adminAuth, async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
-
-router.get('/login-history/:userId', adminAuth, async (req, res) => {
-  const { userId } = req.params;
-  const page = parseInt(req.query.page) || 1;    
-  const limit = parseInt(req.query.limit) || 20; 
-
+router.get("/login-history", adminAuth, async (req, res) => {
   try {
-    // ✅ Admin middleware se req.admin already set
     if (!req.admin) {
-      return res.status(403).json({ message: 'Access denied: Admins only' });
+      return res.status(403).json({ message: "Access denied: Admin only" });
     }
 
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    // Fetch login history with user details
+    const history = await LoginHistory.find({})
+      .populate({
+        path: "userId",
+        select: "name email phone",
+        model: "User"
+      })
+      .sort({ loginAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    // Remove records where user not found
+    const filteredHistory = history.filter(item => item.userId);
+
+    // Format response
+    const formatted = filteredHistory.map(item => ({
+      user: {
+        name: item.userId.name || "-",
+        username: item.userId.email || item.userId.phone || "-"
+      },
+      loginAt: item.loginAt,
+      ip: item.ipAddress || "-",
+      location: item.location || "-",
+      device: `${item.deviceManufacturer || "-"} ${item.deviceModel || "-"}`,
+      browserOS: `${item.browser || "-"} | ${item.os || "-"}`
+    }));
+
+    const total = await LoginHistory.countDocuments({});
+
+    return res.status(200).json({
+      success: true,
+      data: formatted,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ All Login History Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+// -------- Single User Login History --------
+router.get("/login-history/:userId", adminAuth, async (req, res) => {
+  try {
+    if (!req.admin) {
+      return res.status(403).json({ message: "Access denied: Admin only" });
+    }
+
+    const { userId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
     const history = await LoginHistory.find({ userId })
       .sort({ loginAt: -1 })
       .skip(skip)
       .limit(limit)
+      .populate("userId", "name username") // populate name & username
       .lean();
 
     const total = await LoginHistory.countDocuments({ userId });
 
-    res.status(200).json({
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit),
-      data: history,
+    const formatted = history.map(item => ({
+      user: {
+        name: item.userId?.name || "-",
+        username: item.userId?.username || "-",
+      },
+      loginAt: item.loginAt,
+      ip: item.ipAddress || "-",
+      location: item.location || "-",
+      device: `${item.deviceManufacturer || "-"} ${item.deviceModel || "-"}`,
+      browserOS: `${item.browser || "-"} | ${item.os || "-"}`
+    }));
+
+    return res.status(200).json({
+      success: true,
+      data: formatted,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
     });
+
   } catch (err) {
-    console.error('❌ Admin fetch login history error:', err);
-    res.status(500).json({ message: 'Server error' });
+    console.error("❌ Single User Login History Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 });
+// router.get('/login-history/:userId', adminAuth, async (req, res) => {
+//   const { userId } = req.params;
+//   const page = parseInt(req.query.page) || 1;    
+//   const limit = parseInt(req.query.limit) || 20; 
+
+//   try {
+//     // ✅ Admin middleware se req.admin already set
+//     if (!req.admin) {
+//       return res.status(403).json({ message: 'Access denied: Admins only' });
+//     }
+
+//     const skip = (page - 1) * limit;
+
+//     const history = await LoginHistory.find({ userId })
+//       .sort({ loginAt: -1 })
+//       .skip(skip)
+//       .limit(limit)
+//       .lean();
+
+//     const total = await LoginHistory.countDocuments({ userId });
+
+//     res.status(200).json({
+//       page,
+//       limit,
+//       total,
+//       totalPages: Math.ceil(total / limit),
+//       data: history,
+//     });
+//   } catch (err) {
+//     console.error('❌ Admin fetch login history error:', err);
+//     res.status(500).json({ message: 'Server error' });
+//   }
+// });
 module.exports = router;

@@ -51,6 +51,8 @@ const userSchema = new mongoose.Schema({
     deviceId: String,
     model: String,
     manufacturer: String,
+    location: String,
+    os: String
   },
 // lastActiveAt: Date,
   wallet: {

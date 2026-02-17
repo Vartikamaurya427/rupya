@@ -4,8 +4,8 @@ const router = express.Router();
 const User = require('../models/User');
 const JWT_SECRET = 'your_secret_key';
 const authMiddleware = require('../middleware/auth.middleware');
-const LoginHistory = require('../models/LoginHistory');
-
+// const LoginHistory = require('../models/LoginHistory');
+const { trackLogin } = require("../helpers/loginTracker");
 
 const sendSMS = require('../helpers/smssend')
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -384,9 +384,8 @@ router.get('/get-pin-pass', async (req, res) => {
 
 
 router.post('/login', async (req, res) => {
-  const { userId, pin, password, fcmToken, location, os } = req.body;
-  const { deviceid, model, manufacturer } = req.headers;
-
+  const { userId, pin, password, fcmToken } = req.body;
+  const { deviceid, model, manufacturer, location, os } = req.headers;
   if (!userId || (!pin && !password)) {
     return res.status(400).json({
       message: 'UserId and PIN or Password are required',
@@ -446,28 +445,20 @@ router.post('/login', async (req, res) => {
       deviceId: deviceid,
       model,
       manufacturer,
+      location: location,
+      os: os
     };
 
     await user.save();
       // 🔥 Save login history
-    await LoginHistory.create({
-      userId: user._id,
-      ip: req.ip,
-      location: location || '', // optional
-      browser: req.headers['user-agent'] || '',
-      os: os || '',
-      deviceInfo: {
-        deviceId: deviceid,
-        model,
-        manufacturer
-      }
-    });
+ 
 
     const token = jwt.sign(
       { userId: user._id },
       JWT_SECRET,
       { expiresIn: '1h' }
     );
+      await trackLogin(user._id, req);
 
     console.log("✅ Login successful for:", user._id);
 
