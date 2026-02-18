@@ -882,14 +882,74 @@ router.get("/login-history/:userId", adminAuth, async (req, res) => {
 //   }
 // });
 // -------- Top Client (Highest Depositor) --------
+// router.get("/top-client", adminAuth, async (req, res) => {
+//   try {
+
+//     const result = await Transaction.aggregate([
+//       {
+//         $match: {
+//           type: "deposit",
+//           status: { $in: ["successful", "approved"] } // sirf successful deposits
+//         }
+//       },
+//       {
+//         $group: {
+//           _id: "$userId",
+//           totalDeposit: { $sum: "$amount" }
+//         }
+//       },
+//       {
+//         $sort: { totalDeposit: -1 }
+//       },
+//       {
+//         $limit: 1
+//       }
+//     ]);
+
+//     if (!result.length) {
+//       return res.status(200).json({
+//         success: true,
+//         data: null,
+//         message: "No deposits found"
+//       });
+//     }
+
+//     // User details fetch karo
+//     const topUser = await User.findById(result[0]._id)
+//       .select("name email phone")
+//       .lean();
+
+//     return res.status(200).json({
+//       success: true,
+//       data: {
+//         user: {
+//           id: topUser?._id,
+//           name: topUser?.name || "-",
+//           email: topUser?.email || "-",
+//           phone: topUser?.phone || "-"
+//         },
+//         totalDeposit: result[0].totalDeposit
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error("❌ Top Client Error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server error"
+//     });
+//   }
+// });
+// -------- Top Client (Full User Details Like /users/:id) --------
 router.get("/top-client", adminAuth, async (req, res) => {
   try {
 
+    // Step 1: Find top depositor
     const result = await Transaction.aggregate([
       {
         $match: {
           type: "deposit",
-          status: { $in: ["successful", "approved"] } // sirf successful deposits
+          status: { $in: ["successful", "approved"] }
         }
       },
       {
@@ -898,38 +958,62 @@ router.get("/top-client", adminAuth, async (req, res) => {
           totalDeposit: { $sum: "$amount" }
         }
       },
-      {
-        $sort: { totalDeposit: -1 }
-      },
-      {
-        $limit: 1
-      }
+      { $sort: { totalDeposit: -1 } },
+      { $limit: 1 }
     ]);
 
     if (!result.length) {
       return res.status(200).json({
         success: true,
-        data: null,
-        message: "No deposits found"
+        data: null
       });
     }
 
-    // User details fetch karo
-    const topUser = await User.findById(result[0]._id)
-      .select("name email phone")
+    const userId = result[0]._id;
+    const totalDeposit = result[0].totalDeposit;
+
+    // Step 2: Fetch full user like /users/:id
+    const user = await User.findById(userId)
+      .populate("wallet.transactions")
       .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const nameParts = user.name ? user.name.split(" ") : ["", ""];
+
+    const userDetails = {
+      firstName: nameParts[0] || "",
+      lastName: nameParts.slice(1).join(" ") || "",
+      email: user.email || "",
+      mobileNumber: user.phone || "",
+      address: user.address?.street || "",
+      city: user.address?.city || "",
+      state: user.address?.state || "",
+      zipPostal: user.address?.zipCode || "",
+      country: user.address?.country || "",
+      emailVerified: user.emailVerified || false,
+      mobileVerified: user.mobileVerified || false,
+      twoFAVerified: user.twoFAVerified || false,
+      balance: user.wallet?.balance || 0,
+      deposits: user.deposits || 0,
+      transactions: user.wallet?.transactions?.length || 0,
+      servicePurchase: user.servicePurchase || 0,
+      upline: user.upline || "N/A",
+      downline: user.downlineCount || 0,
+
+      // 🔥 Extra add
+      totalDeposit: totalDeposit,
+      userId: user._id
+    };
 
     return res.status(200).json({
       success: true,
-      data: {
-        user: {
-          id: topUser?._id,
-          name: topUser?.name || "-",
-          email: topUser?.email || "-",
-          phone: topUser?.phone || "-"
-        },
-        totalDeposit: result[0].totalDeposit
-      }
+      data: userDetails
     });
 
   } catch (error) {
