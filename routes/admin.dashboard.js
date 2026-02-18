@@ -814,37 +814,131 @@ router.get("/login-history/:userId", adminAuth, async (req, res) => {
     });
   }
 });
-// router.get('/login-history/:userId', adminAuth, async (req, res) => {
-//   const { userId } = req.params;
-//   const page = parseInt(req.query.page) || 1;    
-//   const limit = parseInt(req.query.limit) || 20; 
-
+// router.get("/top-depositor", adminAuth, async (req, res) => {
 //   try {
-//     // ✅ Admin middleware se req.admin already set
-//     if (!req.admin) {
-//       return res.status(403).json({ message: 'Access denied: Admins only' });
+//     const result = await Transaction.aggregate([
+//       {
+//         $match: {
+//           type: "deposit",
+//           status: "successful"
+//         }
+//       },
+//       {
+//         $group: {
+//           _id: "$userId",
+//           totalDeposit: { $sum: "$amount" }
+//         }
+//       },
+//       {
+//         $sort: { totalDeposit: -1 }
+//       },
+//       {
+//         $limit: 1
+//       },
+//       {
+//         $lookup: {
+//           from: "users", // make sure collection name correct ho
+//           localField: "_id",
+//           foreignField: "_id",
+//           as: "user"
+//         }
+//       },
+//       {
+//         $unwind: "$user"
+//       },
+//       {
+//         $project: {
+//           _id: 0,
+//           userId: "$user._id",
+//           name: "$user.name",
+//           email: "$user.email",
+//           phone: "$user.phone",
+//           totalDeposit: 1
+//         }
+//       }
+//     ]);
+
+//     if (!result.length) {
+//       return res.status(200).json({
+//         success: true,
+//         data: {
+//           name: "-",
+//           totalDeposit: 0
+//         }
+//       });
 //     }
 
-//     const skip = (page - 1) * limit;
-
-//     const history = await LoginHistory.find({ userId })
-//       .sort({ loginAt: -1 })
-//       .skip(skip)
-//       .limit(limit)
-//       .lean();
-
-//     const total = await LoginHistory.countDocuments({ userId });
-
-//     res.status(200).json({
-//       page,
-//       limit,
-//       total,
-//       totalPages: Math.ceil(total / limit),
-//       data: history,
+//     return res.status(200).json({
+//       success: true,
+//       data: result[0]
 //     });
-//   } catch (err) {
-//     console.error('❌ Admin fetch login history error:', err);
-//     res.status(500).json({ message: 'Server error' });
+
+//   } catch (error) {
+//     console.error("❌ Top Depositor Error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Server error"
+//     });
 //   }
 // });
+// -------- Top Client (Highest Depositor) --------
+router.get("/top-client", adminAuth, async (req, res) => {
+  try {
+
+    const result = await Transaction.aggregate([
+      {
+        $match: {
+          type: "deposit",
+          status: { $in: ["successful", "approved"] } // sirf successful deposits
+        }
+      },
+      {
+        $group: {
+          _id: "$userId",
+          totalDeposit: { $sum: "$amount" }
+        }
+      },
+      {
+        $sort: { totalDeposit: -1 }
+      },
+      {
+        $limit: 1
+      }
+    ]);
+
+    if (!result.length) {
+      return res.status(200).json({
+        success: true,
+        data: null,
+        message: "No deposits found"
+      });
+    }
+
+    // User details fetch karo
+    const topUser = await User.findById(result[0]._id)
+      .select("name email phone")
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: {
+          id: topUser?._id,
+          name: topUser?.name || "-",
+          email: topUser?.email || "-",
+          phone: topUser?.phone || "-"
+        },
+        totalDeposit: result[0].totalDeposit
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Top Client Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
 module.exports = router;
