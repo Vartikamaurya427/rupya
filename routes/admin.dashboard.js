@@ -1024,5 +1024,74 @@ router.get("/top-client", adminAuth, async (req, res) => {
     });
   }
 });
+router.put("/top-client/:id", adminAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    // Allowed fields to update
+    const allowedUpdates = [
+      "name",
+      "email",
+      "phone",
+      "address.street",
+      "address.city",
+      "address.state",
+      "address.zipCode",
+      "address.country",
+      "emailVerified",
+      "mobileVerified",
+      "twoFAVerified"
+    ];
+
+    const updates = {};
+
+    allowedUpdates.forEach(field => {
+      const keys = field.split(".");
+      let value = req.body;
+
+      for (const key of keys) {
+        if (value && typeof value === "object" && key in value) {
+          value = value[key];
+        } else {
+          value = undefined;
+          break;
+        }
+      }
+
+      if (value !== undefined) {
+        // Nested object set karna
+        let current = updates;
+        keys.forEach((key, i) => {
+          if (i === keys.length - 1) {
+            current[key] = value;
+          } else {
+            current[key] = current[key] || {};
+            current = current[key];
+          }
+        });
+      }
+    });
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, message: "No valid fields to update" });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    return res.status(200).json({ success: true, data: user });
+
+  } catch (error) {
+    console.error("❌ Top Client Update Error:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+});
 
 module.exports = router;
