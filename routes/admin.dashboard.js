@@ -5,6 +5,7 @@ const adminAuth = require("../middleware/adminAuth");
 const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 const LoginHistory = require("../models/LoginHistory"); // <-- ye add karo
+const Service = require("../models/Service");
 
 router.get("/dashboard-master", adminAuth, async (req, res) => {
   try {
@@ -1091,6 +1092,256 @@ router.put("/top-client/:id", adminAuth, async (req, res) => {
   } catch (error) {
     console.error("❌ Top Client Update Error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// -------- Manage Services (Admin Dashboard) --------
+router.post("/services", adminAuth, async (req, res) => {
+  try {
+    const {
+      category,
+      serviceName,
+      processingTime,
+      icon,
+      fixedCharge,
+      percentCharge,
+      serviceInstruction,
+      userData,
+      isActive
+    } = req.body;
+
+    if (!category || !serviceName) {
+      return res.status(400).json({
+        success: false,
+        message: "category and serviceName are required"
+      });
+    }
+
+    const service = await Service.create({
+      category: String(category).trim(),
+      serviceName: String(serviceName).trim(),
+      processingTime: processingTime ? String(processingTime).trim() : "",
+      icon: icon ? String(icon).trim() : "",
+      fixedCharge: Number(fixedCharge) >= 0 ? Number(fixedCharge) : 0,
+      percentCharge: Number(percentCharge) >= 0 ? Number(percentCharge) : 0,
+      serviceInstruction: serviceInstruction || "",
+      userData: Array.isArray(userData) ? userData : [],
+      isActive: typeof isActive === "boolean" ? isActive : true
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Service created successfully",
+      data: service
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Service already exists in this category"
+      });
+    }
+    console.error("Create Service Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+router.get("/services", adminAuth, async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+    const search = (req.query.search || "").trim();
+    const category = (req.query.category || "").trim();
+    const isActive = req.query.isActive;
+
+    const query = {};
+
+    if (search) {
+      query.$or = [
+        { serviceName: { $regex: search, $options: "i" } },
+        { category: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    if (category) {
+      query.category = category;
+    }
+
+    if (typeof isActive !== "undefined") {
+      query.isActive = String(isActive) === "true";
+    }
+
+    const [services, total] = await Promise.all([
+      Service.find(query)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Service.countDocuments(query)
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: services,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error("List Services Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+router.get("/services/:id", adminAuth, async (req, res) => {
+  try {
+    const service = await Service.findById(req.params.id).lean();
+
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        message: "Service not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: service
+    });
+  } catch (error) {
+    console.error("Get Service Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+router.put("/services/:id", adminAuth, async (req, res) => {
+  try {
+    const allowedUpdates = [
+      "category",
+      "serviceName",
+      "processingTime",
+      "icon",
+      "fixedCharge",
+      "percentCharge",
+      "serviceInstruction",
+      "userData",
+      "isActive"
+    ];
+
+    const updates = {};
+    allowedUpdates.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        updates[field] = req.body[field];
+      }
+    });
+
+    if (Object.prototype.hasOwnProperty.call(updates, "category")) {
+      updates.category = String(updates.category || "").trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "serviceName")) {
+      updates.serviceName = String(updates.serviceName || "").trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "processingTime")) {
+      updates.processingTime = String(updates.processingTime || "").trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "icon")) {
+      updates.icon = String(updates.icon || "").trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "fixedCharge")) {
+      updates.fixedCharge = Number(updates.fixedCharge);
+      if (Number.isNaN(updates.fixedCharge) || updates.fixedCharge < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "fixedCharge must be a non-negative number"
+        });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "percentCharge")) {
+      updates.percentCharge = Number(updates.percentCharge);
+      if (Number.isNaN(updates.percentCharge) || updates.percentCharge < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "percentCharge must be a non-negative number"
+        });
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "userData")) {
+      updates.userData = Array.isArray(updates.userData) ? updates.userData : [];
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid fields to update"
+      });
+    }
+
+    const service = await Service.findByIdAndUpdate(
+      req.params.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).lean();
+
+    if (!service) {
+      return res.status(404).json({
+        success: false,
+        message: "Service not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Service updated successfully",
+      data: service
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Service already exists in this category"
+      });
+    }
+    console.error("Update Service Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+router.delete("/services/:id", adminAuth, async (req, res) => {
+  try {
+    const deletedService = await Service.findByIdAndDelete(req.params.id).lean();
+
+    if (!deletedService) {
+      return res.status(404).json({
+        success: false,
+        message: "Service not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Service deleted successfully"
+    });
+  } catch (error) {
+    console.error("Delete Service Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 });
 
