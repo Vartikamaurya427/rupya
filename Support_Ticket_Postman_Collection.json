@@ -1,0 +1,265 @@
+{
+  "info": {
+    "_postman_id": "78dc01cf-57f3-4666-9c71-3e6f1d8fc2f4",
+    "name": "Rupya Render - Support Ticket APIs",
+    "description": "Postman collection for chat-based support flow APIs. Includes login, start support, select option, and final ticket creation.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "User Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData && jsonData.token) {",
+                  "  pm.collectionVariables.set('user_token', jsonData.token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"pin\": \"{{user_pin}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Support Flow",
+      "item": [
+        {
+          "name": "Start Support",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData && Array.isArray(jsonData.options) && jsonData.options.length > 0) {",
+                  "  pm.collectionVariables.set('flow_id', jsonData.options[0].flow_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/support/start",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "support",
+                "start"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Select Option (Level 1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData && Array.isArray(jsonData.options) && jsonData.options.length > 0) {",
+                  "  pm.collectionVariables.set('final_flow_id', jsonData.options[0].flow_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"flow_id\": \"{{flow_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/support/select",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "support",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Select Final Option (Create Ticket)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 or 200', function () {",
+                  "  pm.expect([200, 201]).to.include(pm.response.code);",
+                  "});",
+                  "const jsonData = pm.response.json();",
+                  "if (jsonData && jsonData.ticket && jsonData.ticket.ticket_number) {",
+                  "  pm.collectionVariables.set('ticket_number', jsonData.ticket.ticket_number);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"flow_id\": \"{{final_flow_id}}\",\n  \"transaction_id\": \"{{transaction_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/support/select",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "support",
+                "select"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Select Final Option Again (Duplicate Check)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{user_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"flow_id\": \"{{final_flow_id}}\",\n  \"transaction_id\": \"{{transaction_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/support/select",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "support",
+                "select"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "user_id",
+      "value": ""
+    },
+    {
+      "key": "user_pin",
+      "value": ""
+    },
+    {
+      "key": "user_token",
+      "value": ""
+    },
+    {
+      "key": "transaction_id",
+      "value": ""
+    },
+    {
+      "key": "flow_id",
+      "value": ""
+    },
+    {
+      "key": "final_flow_id",
+      "value": ""
+    },
+    {
+      "key": "ticket_number",
+      "value": ""
+    }
+  ]
+}

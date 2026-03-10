@@ -7,6 +7,88 @@ const Transaction = require("../models/Transaction");
 const LoginHistory = require("../models/LoginHistory"); // <-- ye add karo
 const Service = require("../models/Service");
 
+const DEPOSIT_STATUSES = ["initiated", "pending", "successful", "rejected"];
+const DEPOSIT_STATUS_SET = new Set(DEPOSIT_STATUSES);
+
+const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildDateRangeFilter = (startDateInput, endDateInput) => {
+  if (!startDateInput && !endDateInput) {
+    return null;
+  }
+
+  const range = {};
+
+  if (startDateInput) {
+    const start = new Date(startDateInput);
+    if (!Number.isNaN(start.getTime())) {
+      range.$gte = start;
+    }
+  }
+
+  if (endDateInput) {
+    const end = new Date(endDateInput);
+    if (!Number.isNaN(end.getTime())) {
+      end.setHours(23, 59, 59, 999);
+      range.$lte = end;
+    }
+  }
+
+  return Object.keys(range).length ? range : null;
+};
+
+const buildDepositBaseMatch = async (queryParams = {}) => {
+  const match = { type: "deposit" };
+
+  const status = String(queryParams.status || "").toLowerCase().trim();
+  if (status && DEPOSIT_STATUS_SET.has(status)) {
+    match.status = status;
+  }
+
+  const startDateInput = queryParams.start_date || queryParams.startDate;
+  const endDateInput = queryParams.end_date || queryParams.endDate;
+  const createdAtRange = buildDateRangeFilter(startDateInput, endDateInput);
+  if (createdAtRange) {
+    match.createdAt = createdAtRange;
+  }
+
+  const gateway = String(queryParams.gateway || "").trim();
+  if (gateway) {
+    match.gateway = { $regex: escapeRegex(gateway), $options: "i" };
+  }
+
+  const search = String(queryParams.search || "").trim();
+  if (!search) {
+    return match;
+  }
+
+  const searchRegex = new RegExp(escapeRegex(search), "i");
+  const matchedUsers = await User.find({
+    $or: [
+      { name: searchRegex },
+      { email: searchRegex },
+      { phone: searchRegex }
+    ]
+  })
+    .select("_id")
+    .limit(250)
+    .lean();
+
+  const matchedUserIds = matchedUsers.map((user) => user._id);
+
+  match.$or = [
+    { trx: searchRegex },
+    { gateway: searchRegex },
+    { remark: searchRegex }
+  ];
+
+  if (matchedUserIds.length) {
+    match.$or.push({ userId: { $in: matchedUserIds } });
+  }
+
+  return match;
+};
+
 router.get("/dashboard-master", adminAuth, async (req, res) => {
   try {
     // Use Promise.all for parallel queries
@@ -552,104 +634,60 @@ router.get("/transactions", adminAuth, async (req, res) => {
     });
   }
 });
-router.get('/users/:id/deposits', async (req, res) => {
+router.get("/users/:id/deposits", adminAuth, async (req, res) => {
   try {
     const userId = req.params.id;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
 
-    // Sabhi deposits fetch karo
-    const deposits = await Transaction.find({
-      userId: userId,
-      type: 'deposit'
-    }).sort({ createdAt: -1 });
-
-    // Status wise grouping and summation
-    const statusSummary = {
-      successful: { count: 0, amount: 0 },
-      pending: { count: 0, amount: 0 },
-      rejected: { count: 0, amount: 0 },
-      initiated: { count: 0, amount: 0 }
+    const query = {
+      userId,
+      type: "deposit"
     };
 
-    deposits.forEach(deposit => {
-      const status = deposit.status?.toLowerCase() || 'initiated'; // fallback initiated
-      if (statusSummary[status]) {
-        statusSummary[status].count += 1;
-        statusSummary[status].amount += deposit.amount || 0;
+    const [deposits, total] = await Promise.all([
+      Transaction.find(query)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Transaction.countDocuments(query)
+    ]);
+
+    const statusSummary = {
+      initiated: { count: 0, amount: 0 },
+      pending: { count: 0, amount: 0 },
+      successful: { count: 0, amount: 0 },
+      rejected: { count: 0, amount: 0 }
+    };
+
+    const grouped = await Transaction.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          amount: { $sum: "$amount" }
+        }
+      }
+    ]);
+
+    grouped.forEach((item) => {
+      const key = String(item._id || "").toLowerCase();
+      if (statusSummary[key]) {
+        statusSummary[key] = {
+          count: item.count,
+          amount: item.amount
+        };
       }
     });
 
     return res.status(200).json({
       success: true,
       data: {
-        statusSummary,
+        summary: statusSummary,
         deposits
-      }
-    });
-
-  } catch (error) {
-    console.error(' Deposit History Error:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
-  }
-});
-router.get("/deposits", adminAuth, async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-
-    // Optional filters
-    const status = req.query.status;
-    const gateway = req.query.gateway;
-    const startDate = req.query.startDate;
-    const endDate = req.query.endDate;
-
-    const query = { type: "deposit" };
-
-    if (status) query.status = status;
-    if (gateway) query.gateway = gateway;
-
-    if (startDate && endDate) {
-      query.createdAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      };
-    }
-
-    const deposits = await Transaction.find(query)
-      .populate("userId", "name email phone")
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .lean();
-
-    const total = await Transaction.countDocuments(query);
-
-    const formattedData = deposits.map(d => ({
-      gateway: d.gateway || "-",
-      transactionId: d.trx || d._id.toString(),
-      initiated: d.createdAt,
-      user: {
-        name: d.userId?.name || "-",
-        contact: d.userId?.phone || d.userId?.email || "-"
       },
-      amount: {
-        base: d.amount || 0,
-        fee: d.charge || 0,
-        total: (d.amount || 0) + (d.charge || 0),
-        currency: "USD"
-      },
-      conversion: {
-        rate: d.conversionRate || 1,
-        convertedAmount: d.convertedAmount || d.amount || 0
-      },
-      status: d.status || "initiated"
-    }));
-
-    return res.status(200).json({
-      success: true,
-      data: formattedData,
       pagination: {
         total,
         page,
@@ -657,9 +695,119 @@ router.get("/deposits", adminAuth, async (req, res) => {
         totalPages: Math.ceil(total / limit)
       }
     });
-
   } catch (error) {
-    console.error(" Admin Deposit List Error:", error);
+    console.error("User Deposit History Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+router.get("/deposits", adminAuth, async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+    const match = await buildDepositBaseMatch(req.query);
+
+    const [deposits, total] = await Promise.all([
+      Transaction.find(match)
+        .populate("userId", "name email phone")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Transaction.countDocuments(match)
+    ]);
+
+    const formatted = deposits.map((deposit) => ({
+      id: deposit._id,
+      transaction_id: deposit.trx || String(deposit._id),
+      gateway: deposit.gateway || "-",
+      initiated_at: deposit.createdAt,
+      updated_at: deposit.updatedAt,
+      user: {
+        id: deposit.userId?._id || null,
+        name: deposit.userId?.name || "-",
+        username: deposit.userId?.email || deposit.userId?.phone || "-"
+      },
+      amount: deposit.amount || 0,
+      charge: deposit.charge || 0,
+      total_amount: (deposit.amount || 0) + (deposit.charge || 0),
+      status: DEPOSIT_STATUS_SET.has(String(deposit.status || "").toLowerCase())
+        ? String(deposit.status).toLowerCase()
+        : "initiated"
+    }));
+
+    return res.status(200).json({
+      success: true,
+      total,
+      page,
+      limit,
+      deposits: formatted
+    });
+  } catch (error) {
+    console.error("Admin Deposit List Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+router.patch("/deposits/:id/status", adminAuth, async (req, res) => {
+  try {
+    const depositId = req.params.id;
+    const nextStatus = String(req.body.status || "").toLowerCase().trim();
+
+    if (!DEPOSIT_STATUS_SET.has(nextStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: `status must be one of: ${DEPOSIT_STATUSES.join(", ")}`
+      });
+    }
+
+    const updatePayload = { status: nextStatus };
+    if (Object.prototype.hasOwnProperty.call(req.body, "remark")) {
+      updatePayload.remark = req.body.remark || "";
+    }
+
+    const updatedDeposit = await Transaction.findOneAndUpdate(
+      { _id: depositId, type: "deposit" },
+      {
+        $set: updatePayload
+      },
+      { new: true }
+    ).populate("userId", "name email phone");
+
+    if (!updatedDeposit) {
+      return res.status(404).json({
+        success: false,
+        message: "Deposit not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Deposit status updated",
+      data: {
+        id: updatedDeposit._id,
+        transaction_id: updatedDeposit.trx,
+        status: updatedDeposit.status,
+        remark: updatedDeposit.remark || "",
+        user: {
+          id: updatedDeposit.userId?._id || null,
+          name: updatedDeposit.userId?.name || "-",
+          username: updatedDeposit.userId?.email || updatedDeposit.userId?.phone || "-"
+        },
+        amount: updatedDeposit.amount || 0,
+        gateway: updatedDeposit.gateway || "-",
+        initiated_at: updatedDeposit.createdAt,
+        updated_at: updatedDeposit.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error("Deposit Status Update Error:", error);
     return res.status(500).json({
       success: false,
       message: "Server error"
@@ -669,38 +817,59 @@ router.get("/deposits", adminAuth, async (req, res) => {
 
 router.get("/deposits/summary", adminAuth, async (req, res) => {
   try {
-    const summary = await Transaction.aggregate([
-      { $match: { type: "deposit" } },
+    const match = await buildDepositBaseMatch(req.query);
+    if (match.status) {
+      delete match.status;
+    }
+
+    const grouped = await Transaction.aggregate([
+      { $match: match },
       {
         $group: {
           _id: "$status",
-          totalAmount: { $sum: "$amount" }
+          count: { $sum: 1 },
+          amount: { $sum: "$amount" }
         }
       }
     ]);
 
-    const result = {
-      successful: 0,
-      pending: 0,
-      rejected: 0,
-      initiated: 0
+    const summary = {
+      initiated: { count: 0, amount: 0 },
+      pending: { count: 0, amount: 0 },
+      successful: { count: 0, amount: 0 },
+      rejected: { count: 0, amount: 0 }
     };
 
-    summary.forEach(item => {
-      const key = item._id?.toLowerCase();
-      if (result[key] !== undefined) {
-        result[key] = item.totalAmount;
+    grouped.forEach((item) => {
+      const status = String(item._id || "").toLowerCase();
+      if (summary[status]) {
+        summary[status] = {
+          count: item.count,
+          amount: item.amount
+        };
       }
     });
 
-    return res.json({
-      success: true,
-      data: result
-    });
+    const total = Object.values(summary).reduce((acc, curr) => {
+      return {
+        count: acc.count + curr.count,
+        amount: acc.amount + curr.amount
+      };
+    }, { count: 0, amount: 0 });
 
-  } catch (err) {
-    console.error(" Deposit Summary Error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    return res.status(200).json({
+      success: true,
+      data: {
+        summary,
+        total
+      }
+    });
+  } catch (error) {
+    console.error("Deposit Summary Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
   }
 });
 router.get("/login-history", adminAuth, async (req, res) => {

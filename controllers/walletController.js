@@ -3,6 +3,52 @@ const Transaction = require('../models/Transaction');
 const sendPushNotification = require('../utils/sendPushNotification');
 const { v4: uuidv4 } = require('uuid');
 
+exports.initiateDeposit = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user.userId;
+    const amount = Number(req.body.amount);
+    const gateway = String(req.body.gateway || req.body.method || "manual").trim();
+    const remark = String(req.body.remark || req.body.description || "").trim();
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, message: "Valid amount is required" });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const transaction = await Transaction.create({
+      userId: user._id,
+      trx: uuidv4(),
+      type: "deposit",
+      status: "initiated",
+      gateway: gateway || "manual",
+      amount,
+      postBalance: user.wallet.balance,
+      remark
+    });
+
+    user.wallet.transactions.push(transaction._id);
+    await user.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Deposit initiated",
+      data: {
+        transaction_id: transaction.trx,
+        gateway: transaction.gateway,
+        amount: transaction.amount,
+        status: transaction.status,
+        initiated_at: transaction.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Initiate Deposit Error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+};
 exports.addMoney = async (req, res) => {
   try {
     const { amount, method, description } = req.body;
@@ -140,8 +186,6 @@ exports.getTransactions = async (req, res) => {
   }
 
 };
-
-
 exports.savePaymentMethod = async (req, res) => {
   try {
     const { method, label, details } = req.body;

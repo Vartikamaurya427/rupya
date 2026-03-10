@@ -5,6 +5,7 @@ const auth = require('../middleware/auth.middleware');
 
 
 router.get('/balance', auth, walletController.getBalance);
+router.post('/deposit/initiate', auth, walletController.initiateDeposit);
 router.post('/add', auth, walletController.addMoney);
 router.post('/deduct', auth, walletController.deductMoney);
 router.get('/transactions', auth, walletController.getTransactions);
