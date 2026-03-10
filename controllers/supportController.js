@@ -3,6 +3,7 @@ const SupportFlow = require("../models/SupportFlow");
 const SupportTicket = require("../models/SupportTicket");
 
 const TICKET_PREFIX = "RUPYA";
+const WELCOME_MESSAGE = "Hi, how can we help you today?";
 
 const toOption = (flow) => ({
   flow_id: flow._id,
@@ -67,11 +68,12 @@ exports.startSupport = async (req, res) => {
       .select("_id title message is_final order")
       .lean();
 
-    const welcomeMessage = rootFlows[0]?.message || "";
+    const welcomeMessage = WELCOME_MESSAGE;
 
     return res.status(200).json({
       success: true,
       message: welcomeMessage,
+      description: welcomeMessage,
       options: rootFlows.map(toOption),
     });
   } catch (error) {
@@ -130,10 +132,23 @@ exports.selectSupportOption = async (req, res) => {
         .select("_id title is_final order")
         .lean();
 
+      const rawMessage = selectedFlow.message || "";
+      const message =
+        selectedFlow.parent_id === null && rawMessage === WELCOME_MESSAGE
+          ? ""
+          : rawMessage;
+
+      const messages = [];
+      if (message) {
+        messages.push(message);
+      }
+      messages.push("Please select one of the options below to continue.");
+
       return res.status(200).json({
         success: true,
         is_final: false,
-        message: selectedFlow.message,
+        message,
+        messages,
         options: childOptions.map(toOption),
       });
     }
@@ -211,6 +226,58 @@ exports.selectSupportOption = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to process support selection",
+    });
+  }
+};
+
+exports.getUserSupportTickets = async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized user",
+      });
+    }
+
+    const { status, page = 1, limit = 20 } = req.query;
+    const safePage = Math.max(parseInt(page, 10) || 1, 1);
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+
+    const query = { user_id: userId };
+    if (status) {
+      query.status = String(status).toUpperCase();
+    }
+
+    const [tickets, total] = await Promise.all([
+      SupportTicket.find(query)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((safePage - 1) * safeLimit)
+        .limit(safeLimit)
+        .select("ticket_number status issue_type transaction_id createdAt")
+        .lean(),
+      SupportTicket.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      page: safePage,
+      limit: safeLimit,
+      total,
+      tickets: tickets.map((ticket) => ({
+        ticket_number: ticket.ticket_number,
+        status: ticket.status,
+        issue_type: ticket.issue_type,
+        transaction_id: ticket.transaction_id || null,
+        created_at: ticket.createdAt,
+      })),
+    });
+  } catch (error) {
+    console.error("getUserSupportTickets error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load support tickets",
     });
   }
 };
