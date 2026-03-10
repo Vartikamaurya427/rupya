@@ -230,6 +230,57 @@ exports.selectSupportOption = async (req, res) => {
   }
 };
 
+// exports.getUserSupportTickets = async (req, res) => {
+//   try {
+//     const userId = req.user?.userId || req.user?.id;
+
+//     if (!userId) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Unauthorized user",
+//       });
+//     }
+
+//     const { status, page = 1, limit = 20 } = req.query;
+//     const safePage = Math.max(parseInt(page, 10) || 1, 1);
+//     const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+
+//     const query = { user_id: userId };
+//     if (status) {
+//       query.status = String(status).toUpperCase();
+//     }
+
+//     const [tickets, total] = await Promise.all([
+//       SupportTicket.find(query)
+//         .sort({ createdAt: -1, _id: -1 })
+//         .skip((safePage - 1) * safeLimit)
+//         .limit(safeLimit)
+//         .select("ticket_number status issue_type transaction_id createdAt")
+//         .lean(),
+//       SupportTicket.countDocuments(query),
+//     ]);
+
+//     return res.status(200).json({
+//       success: true,
+//       page: safePage,
+//       limit: safeLimit,
+//       total,
+//       tickets: tickets.map((ticket) => ({
+//         ticket_number: ticket.ticket_number,
+//         status: ticket.status,
+//         issue_type: ticket.issue_type,
+//         transaction_id: ticket.transaction_id || null,
+//         created_at: ticket.createdAt,
+//       })),
+//     });
+//   } catch (error) {
+//     console.error("getUserSupportTickets error:", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to load support tickets",
+//     });
+//   }
+// };
 exports.getUserSupportTickets = async (req, res) => {
   try {
     const userId = req.user?.userId || req.user?.id;
@@ -241,9 +292,9 @@ exports.getUserSupportTickets = async (req, res) => {
       });
     }
 
-    const { status, page = 1, limit = 20 } = req.query;
+    const { status, page = 1, limit = 10 } = req.query;
     const safePage = Math.max(parseInt(page, 10) || 1, 1);
-    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
 
     const query = { user_id: userId };
     if (status) {
@@ -260,11 +311,16 @@ exports.getUserSupportTickets = async (req, res) => {
       SupportTicket.countDocuments(query),
     ]);
 
+    const lastPage = Math.ceil(total / safeLimit);
+
     return res.status(200).json({
       success: true,
       page: safePage,
-      limit: safeLimit,
+      per_page: safeLimit,       // changed from 'limit' for clarity
       total,
+      last_page: lastPage,
+      next_page: safePage < lastPage ? safePage + 1 : null,
+      prev_page: safePage > 1 ? safePage - 1 : null,
       tickets: tickets.map((ticket) => ({
         ticket_number: ticket.ticket_number,
         status: ticket.status,
