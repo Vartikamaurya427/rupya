@@ -16,6 +16,8 @@ const adminDashboardRoutes = require("./routes/admin.dashboard");
 const userTicketRoutes = require('./routes/userTicket.routes');
 const adminTicketRoutes = require('./routes/adminTicket.routes');
 const supportRoutes = require('./routes/support.routes');
+const transactionHistoryRoutes = require('./routes/transactionHistory.routes');
+
 const app = express();
 
         // app.use(cors());
@@ -44,6 +46,7 @@ app.use('/api/admin/dashboard', adminDashboardRoutes);
 app.use('/api/user/tickets', userTicketRoutes);
 app.use('/api/admin/tickets', adminTicketRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/transactions', transactionHistoryRoutes);
 
 const PORT = process.env.PORT || 3000;
 
