@@ -6,6 +6,7 @@ const JWT_SECRET = 'your_secret_key';
 const authMiddleware = require('../middleware/auth.middleware');
 // const LoginHistory = require('../models/LoginHistory');
 const { trackLogin } = require("../helpers/loginTracker");
+const Notification = require('../models/Notification');
 
 const sendSMS = require('../helpers/smssend')
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -265,6 +266,15 @@ router.post('/set-pin', async (req, res) => {
     };
 
     await user.save();
+   
+     await Notification.create({
+      title: "New member registered",
+      message: `New user registered with phone: ${user.phone}`,
+      isRead: false,
+      type: "new_user",
+      refId: user._id,
+      link: `/api/admin/dashboard/users/${user._id}`
+    });
 
     const token = jwt.sign(
       { userId: user._id },

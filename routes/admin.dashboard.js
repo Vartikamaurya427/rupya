@@ -6,6 +6,7 @@ const User = require("../models/User");
 const Transaction = require("../models/Transaction");
 const LoginHistory = require("../models/LoginHistory"); // <-- ye add karo
 const Service = require("../models/Service");
+const Notification = require("../models/Notification");
 
 const DEPOSIT_STATUSES = ["initiated", "pending", "successful", "rejected"];
 const DEPOSIT_STATUS_SET = new Set(DEPOSIT_STATUSES);
@@ -786,7 +787,15 @@ router.patch("/deposits/:id/status", adminAuth, async (req, res) => {
         message: "Deposit not found"
       });
     }
-
+  await Notification.create({
+  title: "Deposit status updated",
+  message: `${updatedDeposit.userId?.phone || "User"} ka ₹${updatedDeposit.amount} deposit ${nextStatus} hua`,
+  isRead: false,
+  type: "recharge",
+  refId: updatedDeposit._id,
+  link: `/api/admin/dashboard/deposits/${updatedDeposit._id}/detail`,
+});
+ 
     return res.status(200).json({
       success: true,
       message: "Deposit status updated",
@@ -1513,5 +1522,56 @@ router.delete("/services/:id", adminAuth, async (req, res) => {
     });
   }
 });
+router.get("/notifications", adminAuth, async (req, res) => {
+  try {
+    const notifications = await Notification.find().sort({ createdAt: -1 }).limit(50).lean();
+    const unreadCount = await Notification.countDocuments({ isRead: false });
 
+    return res.status(200).json({
+      success: true,
+      unreadCount,
+      data: notifications
+    });
+  } catch (error) {
+    console.error("Fetch Notifications Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error"
+    });
+  }
+});
+
+router.patch("/notifications/read", adminAuth, async (req, res) => {
+  try {
+    await Notification.updateMany({ isRead: false }, { $set: { isRead: true } });
+    return res.status(200).json({ success: true, message: "Notifications marked as read" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+router.patch("/notifications/:id/read", adminAuth, async (req, res) => {
+  try {
+    const notification = await Notification.findByIdAndUpdate(
+      req.params.id,
+      { $set: { isRead: true } },
+      { new: true }
+    );
+
+    if (!notification) {
+      return res.status(404).json({ success: false, message: "Notification not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        _id: notification._id,
+        type: notification.type,
+        link: notification.link,
+        isRead: notification.isRead
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+});
 module.exports = router;
