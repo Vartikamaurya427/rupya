@@ -13,6 +13,84 @@ const DEPOSIT_STATUS_SET = new Set(DEPOSIT_STATUSES);
 
 const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const formatTimeAgo = (value) => {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const diffMs = Date.now() - date.getTime();
+  const safeDiffMs = Math.max(diffMs, 0);
+
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const month = 30 * day;
+  const year = 365 * day;
+
+  if (safeDiffMs < minute) {
+    return "just now";
+  }
+
+  if (safeDiffMs < hour) {
+    const minutes = Math.floor(safeDiffMs / minute);
+    return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  }
+
+  if (safeDiffMs < day) {
+    const hours = Math.floor(safeDiffMs / hour);
+    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  }
+
+  if (safeDiffMs < month) {
+    const days = Math.floor(safeDiffMs / day);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  }
+
+  if (safeDiffMs < year) {
+    const months = Math.floor(safeDiffMs / month);
+    return `${months} month${months === 1 ? "" : "s"} ago`;
+  }
+
+  const years = Math.floor(safeDiffMs / year);
+  return `${years} year${years === 1 ? "" : "s"} ago`;
+};
+
+const serializeNotification = (notification) => ({
+  ...notification,
+  timeAgo: formatTimeAgo(notification.createdAt)
+});
+
+const buildUserDetails = (user) => {
+  if (!user) {
+    return null;
+  }
+
+  const nameParts = user.name ? user.name.split(" ") : ["", ""];
+
+  return {
+    firstName: nameParts[0] || "",
+    lastName: nameParts.slice(1).join(" ") || "",
+    email: user.email || "",
+    mobileNumber: user.phone || "",
+    address: user.address?.street || "",
+    city: user.address?.city || "",
+    state: user.address?.state || "",
+    zipPostal: user.address?.zipCode || "",
+    country: user.address?.country || "",
+    emailVerified: user.emailVerified || false,
+    mobileVerified: user.mobileVerified || false,
+    twoFAVerified: user.twoFAVerified || false,
+    balance: user.wallet?.balance || 0,
+    deposits: user.deposits || 0,
+    transactions: user.wallet?.transactions?.length || 0,
+    servicePurchase: user.servicePurchase || 0,
+    upline: user.upline || "N/A",
+    downline: user.downlineCount || 0
+  };
+};
+
 const buildDateRangeFilter = (startDateInput, endDateInput) => {
   if (!startDateInput && !endDateInput) {
     return null;
@@ -350,30 +428,7 @@ router.get("/users/:id", adminAuth, async (req, res) => {
         message: "User not found"
       });
     }
-
-    // Split name into firstName and lastName
-    const nameParts = user.name ? user.name.split(" ") : ["", ""];
-
-    const userDetails = {
-      firstName: nameParts[0] || "",
-      lastName: nameParts.slice(1).join(" ") || "",
-      email: user.email || "",
-      mobileNumber: user.phone || "",
-      address: user.address?.street || "",
-      city: user.address?.city || "",
-      state: user.address?.state || "",
-      zipPostal: user.address?.zipCode || "",
-      country: user.address?.country || "",
-      emailVerified: user.emailVerified || false,
-      mobileVerified: user.mobileVerified || false,
-      twoFAVerified: user.twoFAVerified || false,
-      balance: user.wallet?.balance || 0,
-      deposits: user.deposits || 0,
-      transactions: user.wallet?.transactions?.length || 0,
-      servicePurchase: user.servicePurchase || 0,
-      upline: user.upline || "N/A",
-      downline: user.downlineCount || 0
-    };
+    const userDetails = buildUserDetails(user);
 
     return res.status(200).json({
       success: true,
@@ -1530,7 +1585,7 @@ router.get("/notifications", adminAuth, async (req, res) => {
     return res.status(200).json({
       success: true,
       unreadCount,
-      data: notifications
+      data: notifications.map(serializeNotification)
     });
   } catch (error) {
     console.error("Fetch Notifications Error:", error);
@@ -1555,19 +1610,34 @@ router.patch("/notifications/:id/read", adminAuth, async (req, res) => {
       req.params.id,
       { $set: { isRead: true } },
       { new: true }
-    );
+    ).lean();
 
     if (!notification) {
       return res.status(404).json({ success: false, message: "Notification not found" });
+    }
+
+    let target = null;
+
+    if (notification.type === "new_user" && notification.refId) {
+      const user = await User.findById(notification.refId)
+        .populate("wallet.transactions")
+        .lean();
+      target = buildUserDetails(user);
     }
 
     return res.status(200).json({
       success: true,
       data: {
         _id: notification._id,
+        title: notification.title,
+        message: notification.message,
         type: notification.type,
         link: notification.link,
-        isRead: notification.isRead
+        refId: notification.refId || null,
+        isRead: notification.isRead,
+        createdAt: notification.createdAt,
+        timeAgo: formatTimeAgo(notification.createdAt),
+        target
       }
     });
   } catch (error) {
